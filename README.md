@@ -23,6 +23,8 @@
 
 ![执行轨迹](docs/screenshots/02-执行轨迹.png)
 
+更细的分层实现与实测数据见 [docs/项目详解.md](docs/项目详解.md)，开发中踩过的坑见 [docs/踩坑记录.md](docs/踩坑记录.md)。
+
 ## 架构
 
 分层流水线，顺序固定：
@@ -120,7 +122,7 @@ data/                     知识库目录
 eval/                     离线评估脚本（切块 / 检索 / 引用校验，不需要 API Key）
 requirements.txt          运行依赖
 tests/                    冒烟测试（不需要 API Key）
-docs/                     项目文档、截图与 Web 使用说明
+docs/                     项目详解、踩坑记录、Web 使用说明与截图
 ```
 
 ## 技术栈
