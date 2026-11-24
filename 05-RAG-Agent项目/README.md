@@ -44,7 +44,7 @@ http://127.0.0.1:8000
 网页层冒烟测试（不调用真实模型，使用临时 SQLite 库；在项目根目录运行）：
 
 ```powershell
-python "02-任务卡与测试/测试_网页.py"
+python tests/test_web.py
 ```
 
 ## 分步验收清单（任务 1）
