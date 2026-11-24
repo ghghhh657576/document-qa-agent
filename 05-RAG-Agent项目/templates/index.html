@@ -1,0 +1,257 @@
+<!doctype html>
+<!-- 声明这是中文HTML页面 -->
+<html lang="zh-CN">
+<head>
+  <!-- 网页编码，防止中文乱码 -->
+  <meta charset="utf-8">
+  <!-- 适配手机/电脑屏幕宽度 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- 浏览器标签页上显示的标题 -->
+  <title>课程资料理解助手</title>
+
+  <!-- ============== 所有页面样式都在这里，按功能分块 ============== -->
+  <style>
+    /* 全局页面基础样式：控制整体宽度、字体、默认文字颜色 */
+    body {
+      max-width: 800px;          /* 页面内容最大宽度，不会铺满整个大屏 */
+      margin: 40px auto;         /* 上下留40px边距，左右自动居中 */
+      padding: 0 16px 60px;      /* 左右留空白，底部留60px防止贴边 */
+      font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+      line-height: 1.6;          /* 行高，文字不挤 */
+      color: #222;               /* 默认文字深灰色，比纯黑护眼 */
+    }
+
+    /* 顶部标题栏布局：标题和新对话按钮左右分布 */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+    }
+    h1 { font-size: 1.5rem; margin-bottom: 4px; }       /* 主标题大小 */
+    .hint { color: #777; font-size: .9rem; margin-top: 0; } /* 标题下方灰色提示文字 */
+
+    /* 右上角新对话按钮样式 */
+    .new-btn {
+      flex-shrink: 0;
+      font-size: .9rem;
+      color: #2563eb;
+      text-decoration: none;
+      padding-top: 4px;
+    }
+
+    /* 聊天消息容器：纵向排列所有气泡，控制间距 */
+    .chat-list {
+      margin: 24px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    /* 消息气泡通用样式 */
+    .msg {
+      padding: 10px 14px;
+      border-radius: 8px;        /* 圆角 */
+      max-width: 85%;            /* 气泡不会占满整行，模拟聊天效果 */
+      white-space: pre-wrap;     /* 保留换行，不会把段落挤成一行 */
+      word-break: break-word;    /* 长单词/长链接自动换行不溢出 */
+    }
+    /* 用户发的消息：蓝色气泡，靠右对齐 */
+    .msg.user {
+      background: #2563eb;
+      color: #fff;
+      align-self: flex-end;
+    }
+    /* AI回复的消息：浅灰气泡，靠左对齐 */
+    .msg.assistant {
+      background: #f1f5f9;
+      color: #222;
+      align-self: flex-start;
+    }
+
+    /* 红色错误提示条样式 */
+    .error {
+      margin: 16px 0;
+      padding: 12px;
+      background: #fef2f2;
+      color: #dc2626;
+      border-left: 4px solid #dc2626; /* 左侧红色竖条醒目 */
+      border-radius: 4px;
+    }
+
+    /* 输入框标签样式 */
+    label { display: block; margin-bottom: 6px; font-weight: 600; }
+    /* 多行输入框样式 */
+    textarea {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 10px;
+      font: inherit;
+      border: 1px solid #bbb;
+      border-radius: 6px;
+      resize: vertical; /* 只允许上下拖动调整高度 */
+    }
+
+    /* 通用按钮默认样式（发送按钮用） */
+    button {
+      margin-top: 10px;
+      padding: 8px 24px;
+      font: inherit;
+      cursor: pointer;           /* 鼠标放上去变小手，提示可点击 */
+      border: 0;
+      border-radius: 6px;
+      background: #2563eb;
+      color: #fff;
+    }
+    button:hover { background: #1d4ed8; } /* 鼠标悬停按钮变深蓝 */
+  </style>
+</head>
+
+<body>
+  <!-- ============== 1. 页面顶部标题栏 ============== -->
+  <div class="header">
+    <div>
+      <h1>课程资料理解助手</h1>
+      <p class="hint">根据本地课程资料回答，答案标注引用块，支持连续追问。</p>
+    </div>
+    <!-- 点击直接回到首页，开启全新空白会话 -->
+    <a class="new-btn" href="/">+ 开启新对话</a>
+  </div>
+
+  <!-- ============== 2. 可折叠历史会话区域 ============== -->
+  <!-- Jinja模板判断：只有sessions列表不为空（真的有历史），才显示整块 -->
+  {% if sessions %}
+  <details style="margin: 12px 0;">
+    <!-- 折叠状态显示的标题，点击自动展开/收起，原生HTML不用JS -->
+    <summary style="cursor: pointer; color: #2563eb; font-size: .9rem;">
+      历史会话（{{ sessions|length }}个）
+    </summary>
+
+    <!-- 历史条目容器：纵向排列，每个条目一行 -->
+    <div style="margin-top: 10px; display: flex; flex-direction: column; gap: 6px; font-size: .9rem;">
+      <!-- Jinja循环：遍历后端传过来的每一个会话，逐个生成条目 -->
+      {% for s in sessions %}
+      <div style="display: flex; align-items: center; gap: 8px; padding: 4px 8px; background: #f8fafc; border-radius: 4px;">
+        <!-- 左侧会话链接：点击跳转对应历史聊天页 -->
+        <a href="/chat/{{ s.id }}" style="flex: 1; color: #333; text-decoration: none;">
+          #{{ s.id }} {{ s.title[:30] }}  <!-- 标题过长截断前30字，防止撑破布局 -->
+        </a>
+
+        <!-- 删除按钮表单：POST提交，不用JavaScript -->
+        <form method="post" action="/delete-session" style="margin: 0;">
+          <!-- 隐藏字段：页面不可见，提交时把当前要删除的会话id传给后端 -->
+          <input type="hidden" name="sid" value="{{ s.id }}">
+          <!-- 红色小删除按钮，覆盖默认大按钮样式 -->
+          <button type="submit" style="margin: 0; padding: 2px 8px; font-size: .8rem; background: #ef4444;">
+            删除
+          </button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+  </details>
+  {% endif %}
+
+  <!-- ============== 3. 聊天消息气泡展示区 ============== -->
+  <div class="chat-list">
+    <!-- 遍历当前会话的全部历史消息 -->
+    {% for msg in history %}
+      <!-- 判断消息角色：用户消息用蓝色右气泡 -->
+      {% if msg.role == 'user' %}
+      <div class="msg user">{{ msg.content }}</div>
+      <!-- 其余就是AI消息，用灰色左气泡 -->
+      {% else %}
+      <div class="msg assistant">{{ msg.content }}</div>
+      {% endif %}
+    {% endfor %}
+  </div>
+
+  <!-- ============== 4. 错误提示区域 ============== -->
+  <!-- 只有后端返回了错误信息（空问题、服务异常）时才显示红条 -->
+  {% if answer %}
+  <div class="error">{{ answer }}</div>
+  {% endif %}
+
+  <!-- ============== 5. 执行详情区域（对齐命令行版的可视化能力） ============== -->
+  {% if detail %}
+  <details style="margin: 16px 0; border: 1px solid #e5e7eb; border-radius: 6px; padding: 10px 14px;">
+    <summary style="cursor: pointer; color: #2563eb; font-size: .9rem; font-weight: 600;">
+      本次执行详情：模型 {{ detail.n_model }} 次 / 工具 {{ detail.n_tool }} 次
+      · 耗时 {{ '%.1f'|format(detail.total_elapsed) }}s
+      · 成本 ¥{{ '%.4f'|format(detail.cost) }}
+    </summary>
+
+    <!-- 过程日志：模型调用了哪些工具、引用校验结果 -->
+    {% if log %}
+    <div style="margin-top: 12px; font-size: .85rem; color: #444;">
+      <strong>执行过程：</strong>
+      <ul style="margin: 6px 0 0; padding-left: 18px;">
+        {% for item in log %}
+        <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% else %}
+    <div style="margin-top: 12px; font-size: .85rem; color: #777;">（模型没有调用工具，直接回答）</div>
+    {% endif %}
+
+    <!-- 执行轨迹表格：逐步展示 token、耗时、缓存命中 -->
+    <div style="margin-top: 12px; overflow-x: auto;">
+      <table style="width: 100%; border-collapse: collapse; font-size: .85rem;">
+        <thead>
+          <tr style="text-align: left; color: #555; border-bottom: 1px solid #ddd;">
+            <th style="padding: 4px 8px;">步</th>
+            <th style="padding: 4px 8px;">用途</th>
+            <th style="padding: 4px 8px;">输入</th>
+            <th style="padding: 4px 8px;">输出</th>
+            <th style="padding: 4px 8px;">耗时</th>
+            <th style="padding: 4px 8px;">缓存</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in detail.rows %}
+          <tr style="border-bottom: 1px solid #f0f0f0;">
+            <td style="padding: 4px 8px;">{{ r.step }}</td>
+            <td style="padding: 4px 8px;">{{ r.name }}</td>
+            {% if r.kind == 'model' %}
+            <td style="padding: 4px 8px;">{{ r.prompt }}</td>
+            <td style="padding: 4px 8px;">{{ r.completion }}</td>
+            <td style="padding: 4px 8px;">{{ '%.1f'|format(r.elapsed) }}s</td>
+            <td style="padding: 4px 8px;">{{ r.cache_hit }}/{{ r.prompt }}</td>
+            {% else %}
+            <td style="padding: 4px 8px;">—</td>
+            <td style="padding: 4px 8px;">—</td>
+            <td style="padding: 4px 8px;">{{ '%.1f'|format(r.elapsed) }}s</td>
+            <td style="padding: 4px 8px;">—</td>
+            {% endif %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 合计信息：输入输出 token、缓存命中率 -->
+    <div style="margin-top: 8px; font-size: .85rem; color: #444;">
+      合计：输入 {{ detail.p_in }} token / 输出 {{ detail.p_out }} token
+      {% if detail.cache_rate is not none %}
+      · 缓存命中率 {{ '%.0f'|format(detail.cache_rate) }}%
+      {% endif %}
+    </div>
+  </details>
+  {% endif %}
+
+  <!-- ============== 6. 底部提问输入表单 ============== -->
+  <!-- 提交方式POST，数据发给后端/ask-page路由处理 -->
+  <form method="post" action="/ask-page">
+    <!-- 隐藏sid：保存当前会话编号，首次提问为空，后续提问自动带id，保证多轮属于同一会话 -->
+    <input type="hidden" name="sid" value="{{ sid if sid else '' }}">
+
+    <label for="question">你的问题</label>
+    <textarea id="question" name="question" rows="4" maxlength="2000"
+              autofocus required
+              placeholder="输入问题，可连续追问...">{{ question }}</textarea>
+    <!-- 提交按钮，点击自动发送整个表单数据 -->
+    <button type="submit">发送</button>
+  </form>
+</body>
+</html>
