@@ -1,0 +1,143 @@
+Python 语言笔记
+
+一、变量与对象模型
+
+1. 一切皆对象。变量名只是对象的引用，赋值不会复制对象。
+   a = [1, 2]
+   b = a          # b 和 a 指向同一个列表
+   b.append(3)    # a 也会看到 3
+若想要独立副本，用 a.copy() 或 copy.deepcopy(a)。
+
+2. 可变对象与不可变对象
+   不可变：int、float、str、tuple、frozenset、bytes
+   可变：list、dict、set、bytearray、自定义类实例
+   不可变对象可以作为 dict 的键；可变对象不行（哈希值会变）。
+
+3. 小整数与字符串驻留
+   Python 会缓存 -5 到 256 的整数以及部分短字符串，因此
+   a = 256; b = 256; a is b 可能为 True，但这是实现细节，比较值请用 ==。
+
+4. 浅拷贝与深拷贝
+   浅拷贝 copy.copy / list.copy / dict.copy / 切片：
+   只复制最外层容器，内部元素仍是共享引用。
+   深拷贝 copy.deepcopy：
+   递归复制所有层级，能处理循环引用，但速度更慢。
+   典型坑：二维列表 [[0] * 3] * 3 的三行是同一个列表的引用，
+   改一行三行全变；应写成 [[0] * 3 for _ in range(3)]。
+
+
+二、函数、闭包与装饰器
+
+1. 函数是一等对象，可以赋值、作为参数、作为返回值、放进容器。
+2. 闭包：内层函数引用了外层函数的局部变量，外层返回后该变量仍然存活。
+   def counter():
+       n = 0
+       def inc():
+           nonlocal n
+           n += 1
+           return n
+       return inc
+   nonlocal 声明告诉解释器修改的是外层变量，而不是新建局部变量。
+
+3. 装饰器本质是"接收函数、返回函数"的高阶函数。
+   def log(func):
+       def wrapper(*args, **kwargs):
+           print("调用", func.__name__)
+           return func(*args, **kwargs)
+       return wrapper
+
+   @log
+   def add(a, b):
+       return a + b
+   等号右边实际是 add = log(add)。
+   带参数的装饰器需要多套一层：装饰器工厂返回真正的装饰器。
+
+4. functools.wraps 用来保留原函数的 __name__、__doc__ 等元信息；
+   不写的话，调试和文档生成都会显示 wrapper 这个名字。
+
+5. 装饰器的典型用途：日志、计时、权限校验、缓存、重试。
+   多个装饰器叠加时，离函数最近的先包装，也就是从下往上执行。
+
+
+三、生成器与迭代器
+
+1. 可迭代对象实现 __iter__；迭代器同时实现 __iter__ 和 __next__。
+2. 生成器函数用 yield 返回值，调用时不会立刻执行，只在 next 时推进，
+   适合处理大文件、无限序列、流式数据，内存占用小。
+3. 生成器只能遍历一次，遍历完需要重新创建。
+4. yield from 可以把子生成器的值逐个透传出来。
+5. 列表推导式会一次性生成整个列表；把方括号换成圆括号得到生成器表达式，
+   大数据量时更省内存。
+
+
+四、上下文管理器与 with
+
+1. with 语句保证资源在离开代码块时被释放，即使中途抛异常。
+2. 自己实现上下文管理器有两种方式：
+   实现 __enter__ 和 __exit__；或使用 contextlib.contextmanager 装饰
+   一个带 yield 的生成器函数。
+3. 文件操作推荐 with open(...) as f:，避免忘记 close。
+4. __exit__ 返回 True 会吞掉异常，返回 False（或 None）则继续向外抛。
+
+
+五、并发模型：线程、进程与协程
+
+1. GIL（全局解释器锁）
+   CPython 同一时刻只允许一个线程执行 Python 字节码。
+   因此多线程适合 IO 密集任务（网络请求、文件读写），
+   对 CPU 密集任务没有并行加速效果。
+   注意：涉及 C 扩展的阻塞调用在等待时会释放 GIL，所以部分场景仍能重叠。
+
+2. threading
+   适合 IO 密集；线程共享内存，需要用 Lock、RLock、Semaphore、
+   Queue 等同步原语保护共享状态。
+   RLock 允许同一线程重复获取，Lock 不允许。
+
+3. multiprocessing
+   每个进程有独立解释器和独立内存，能真正并行使用多核；
+   代价是进程创建开销大、数据传递需要序列化（pickle）。
+
+4. asyncio 与协程
+   async def 定义协程函数，await 挂起当前协程、让出事件循环。
+   单线程事件循环，适合高并发 IO；不要在协程里写阻塞调用
+   （time.sleep、阻塞式网络库），否则会卡住整个循环。
+   需要并发时用 asyncio.gather 或 TaskGroup。
+
+5. 如何选
+   IO 密集且并发量高：asyncio 或线程池；
+   CPU 密集：多进程；
+   简单脚本：先写同步版本，再按瓶颈优化。
+
+
+六、异常处理
+
+1. try / except / else / finally 的完整结构：
+   else 在没有异常时执行，finally 无论是否异常都会执行。
+2. 捕获异常要具体，避免裸 except 吞掉所有错误。
+3. raise ... from ... 保留异常链；自定义异常通常继承 Exception。
+4. 异常不要用来做正常流程控制，性能差且难读。
+
+
+七、常用内置与标准库
+
+1. 数据结构：list、dict、set、tuple、collections.deque、
+   collections.defaultdict、collections.Counter、heapq。
+2. 字符串：str.split、join、strip、replace、startswith、endswith、
+   格式化用 f-string。
+3. 文件与路径：pathlib.Path 比字符串拼接更清晰；
+   读大文件用逐行迭代，不要一次 read() 全部读入。
+4. 排序：sorted 返回新列表，list.sort 原地排序；
+   key 参数接受函数，reverse 控制降序。
+5. 序列化：json 处理标准 JSON；pickle 只用于可信数据，不要反序列化陌生输入。
+
+
+八、常见易错点
+
+1. 默认参数不要用可变对象：
+   def f(x, acc=[]) 的 acc 只创建一次，会在调用之间累积。
+2. 循环中删除列表元素会跳过元素，应先收集再删除，或用列表推导式过滤。
+3. is 比较身份，== 比较值；字符串、整数不要用 is 判断相等。
+4. 字典遍历时修改字典会抛 RuntimeError，可先转成 list(d.items())。
+5. 浮点数存在精度误差，比较金额用 decimal.Decimal。
+6. 字符串拼接大量片段时用 "".join(parts)，不要用 += 循环。
+7. 读文件记得指定 encoding="utf-8"，Windows 默认编码不一定是 UTF-8。

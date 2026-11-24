@@ -24,12 +24,12 @@ CASES = [
     ("滑动窗口", "滑动窗口"),
     ("二分查找", "二分查找"),
     ("哈希表", "哈希表"),
-    ("Function Calling 是什么", "Function Calling"),
-    ("RAG 和 Function Calling 的区别", "Function Calling"),
-    ("简历上的项目怎么写", "简历"),
-    ("什么时候投实习", "投递"),
-    ("BM25 和向量检索的区别", "BM25"),
-    ("多轮对话怎么实现的", "多轮对话"),
+    ("GIL 是什么", "GIL"),
+    ("线程和协程的区别", "协程"),
+    ("深浅拷贝的区别", "深拷贝"),
+    ("数据库索引什么时候会失效", "索引"),
+    ("HTTP 常见状态码", "状态码"),
+    ("缓存击穿怎么解决", "缓存击穿"),
     ("怎么复用代码", "装饰器"),
 ]
 
@@ -69,9 +69,9 @@ def main():
     for q in ("如何做红烧肉", "量子计算", "今天天气怎么样"):
         text, hits = rag.search(q, chunks, bm25)
         print(f"语料外问题 {q!r} -> {len(hits)} 命中，回答={text!r}")
-    up = [i for i, _ in rag.search("BM25", chunks, bm25)[1]]
-    lo = [i for i, _ in rag.search("bm25", chunks, bm25)[1]]
-    print(f"大小写：BM25 -> {up}，bm25 -> {lo}，{'一致' if up == lo else '不一致'}")
+    up = [i for i, _ in rag.search("HTTP", chunks, bm25)[1]]
+    lo = [i for i, _ in rag.search("http", chunks, bm25)[1]]
+    print(f"大小写：HTTP -> {up}，http -> {lo}，{'一致' if up == lo else '不一致'}")
     for q in ("的", "怎么"):
         print(f"纯停用词 {q!r} -> {len(rag.search(q, chunks, bm25)[1])} 命中")
 

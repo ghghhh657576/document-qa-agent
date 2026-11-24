@@ -258,7 +258,7 @@ def test_2_new_session():
     section(2, "不带 -c 就是新会话（小步 2-1）")
     reset_db()
     _, out1, _ = run(["装饰器是干什么的"])
-    _, out2, _ = run(["刷题按什么顺序安排"])
+    _, out2, _ = run(["二分查找的边界怎么处理"])
 
     s1, s2 = session_id_of(out1), session_id_of(out2)
     check("第一次有会话号", s1 is not None)
@@ -334,7 +334,7 @@ def test_4_specific_session():
     section(4, "『-s N』指定会话（小步 2-2）")
     reset_db()
     run(["装饰器是干什么的"])          # #1
-    run(["刷题按什么顺序安排"])        # #2
+    run(["二分查找的边界怎么处理"])        # #2
     _, out3, _ = run(["-s", "1", "那刚才那个再说详细点"])
 
     check("-s 1 落在会话 #1", session_id_of(out3) == "1",
@@ -392,7 +392,7 @@ def test_7_sessions_list():
     section(7, "『--sessions』列表 + 不读知识库（小步 2-3）")
     reset_db()
     run(["装饰器是干什么的"])
-    run(["刷题按什么顺序安排"])
+    run(["二分查找的边界怎么处理"])
 
     rc, out, dt = run(["--sessions"])
     info(f"耗时 {dt:.2f} 秒")
@@ -404,7 +404,7 @@ def test_7_sessions_list():
         check("最近的排在前面", out.index("#2") < out.index("#1"),
               "#2 应该出现在 #1 上面（按 updated_at 倒序）")
     check("包含了轮数", "轮" in out)
-    check("包含了标题", "装饰器" in out or "刷题" in out)
+    check("包含了标题", "装饰器" in out or "二分" in out or "查找" in out)
 
     check(f"耗时 < {SESSIONS_MAX_SECONDS} 秒（说明没读知识库）", dt < SESSIONS_MAX_SECONDS,
           f"实测 {dt:.2f}s —— main() 要在 load_all() 之前分流（约束 6）")
@@ -414,7 +414,7 @@ def test_11_alignment():
     section(11, "会话列表中文对齐（小步 2-3）")
     reset_db()
     run(["装饰器是干什么的"])
-    run(["刷题按什么顺序安排"])
+    run(["二分查找的边界怎么处理"])
     _, out, _ = run(["--sessions"])
 
     lines = [l for l in out.splitlines()

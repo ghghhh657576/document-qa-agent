@@ -333,14 +333,14 @@ def test_3_citation():
 
 def test_4_second_question():
     section(4, "换一个问题也能答（不是写死的一句话）")
-    st, body, ct, dt, obj = ask("刷题按什么顺序安排")
+    st, body, ct, dt, obj = ask("二分查找的边界怎么处理")
     info(f"HTTP {st}  耗时 {dt:.1f}s")
     ans = (obj or {}).get("answer") or ""
     info(f"回答前 160 字：{ans[:160]!r}")
 
     check("状态码 200", st == 200, f"实际 {st}")
     check("answer 非空", bool(ans.strip()), "空回答")
-    check("内容跟刷题有关", ("刷题" in ans) or ("专题" in ans) or ("模板" in ans),
+    check("内容跟二分查找有关", ("二分" in ans) or ("查找" in ans) or ("边界" in ans),
           f"回答前 200 字：{ans[:200]!r}")
     check("和第一个问题不是同一段话",
           bool(ans.strip()) and ans.strip()[:40] != prev_answer("装饰器的验收标准是什么").strip()[:40],

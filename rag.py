@@ -65,7 +65,7 @@ TOOLS = [{
     "type": "function",
     "function": {
         "name": "search_material",
-        "description": "在课程资料中搜索相关内容。当你需要查找资料里的事实性信息时使用。",
+        "description": "在本地文档中搜索相关内容。当你需要查找资料里的事实性信息时使用。",
         "parameters": {
             "type": "object",
             "properties": {
@@ -81,7 +81,7 @@ TOOLS = [{
     "type": "function",
     "function": {
         "name": "generate_quiz",
-        "description": "根据课程资料生成练习题。当用户想测试自己、要练习题、或要求出题时使用。",
+        "description": "根据本地文档生成练习题。当用户想测试自己、要练习题、或要求出题时使用。",
         "parameters": {
             "type": "object",
             "properties": {
@@ -101,8 +101,8 @@ TOOLS = [{
 
 #大模型提示词
 SYSTEM_PROMPT = (
-    "你是课程资料问答助手。只能依据 search_material 检索到的资料内容回答，"
-    "回答时标注引用的块编号和它来自的资料文件名，格式如「（块 #12，知识点细化手册_clean.txt）」；"
+    "你是文档知识库问答助手。只能依据 search_material 检索到的资料内容回答，"
+    "回答时标注引用的块编号和它来自的资料文件名，格式如「（块 #12，算法与数据结构笔记_clean.txt）」；"
     "资料中没有依据时直接说“资料中没有找到”，禁止编造。"
     "无论资料里有多少英文术语，始终用简体中文回答。"
 )
