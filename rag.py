@@ -55,6 +55,11 @@ try:
 except FileNotFoundError:
     pass
 
+
+# 疑问词/功能词：不是检索目标；否则“如何做红烧肉”这类问题会靠“如何”两个字命中资料
+for _w in ("如何", "怎么", "怎样", "怎么办", "什么", "为什么", "哪些", "哪个", "多少", "是否", "请问"):
+    STOP.add(_w)
+
 #大模型可以调用的工具(搜索和出题)
 TOOLS = [{
     "type": "function",
@@ -146,7 +151,8 @@ def split_every(s, n):
 def tokenize(text):
     if not text or not text.strip():
         return []
-    words = jieba.lcut(text)
+    # 统一转小写：BM25 是字面匹配，BM25/bm25 必须命中同一批词
+    words = jieba.lcut(text.lower())
     return [w for w in words if w.strip() and w not in STOP]
 
 #读取data下所有txt,md文件，合并后分别读取并切片，包装成字典(带文件名)返回
@@ -175,11 +181,22 @@ def build_index(chunks):
     return BM25Okapi(docs)
 
 #切分问题然后给字段打分，排序取前三位
+#补充粗筛：命中块里必须出现一个长度≥2的查询词原词（不区分大小写），
+#避免 BM25 对完全无关的问题也返回几块（例如“如何做红烧肉”）
 def search(query, chunks, bm25, topk=3):
     qtokens = tokenize(query)
+    qwords = [w for w in qtokens if len(w) >= 2]
     scores = bm25.get_scores(qtokens)
     pairs = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
     top = [(idx, sc) for idx, sc in pairs[:topk] if sc > 0]
+    if top and qwords:
+        top = [
+            (idx, sc) for idx, sc in top
+            if any(w in chunks[idx]["content"].lower() for w in qwords)
+        ]
+    if not top and qwords:
+        # 查询词在资料里完全没出现过：直接判定没有，不拿低分块兜底
+        return f"未找到与「{query}」相关的内容", []
     if not top:
         qset = set(qtokens)
         overlap = []
