@@ -1,3 +1,20 @@
+# -*- coding: utf-8 -*-
+"""文档知识库问答 Agent 的引擎 + 命令行入口。
+
+这个文件同时承担两件事，Web 端 app.py 直接复用同一份引擎，仓库里不再有第二份副本：
+  1) 检索 / Agent / 数据库层：split_every、tokenize、load_all、search、agent、会话存取……
+  2) 命令行入口：参数解析、交互循环、终端渲染（`if __name__ == "__main__"` 处）。
+
+命令行用法：
+    python rag.py                    # 交互模式，按默认 data/ 资料
+    python rag.py "你的问题"          # 单次提问
+    python rag.py -c "追问"           # 接着最近一次会话问
+    python rag.py -s 3 "继续问"       # 接着 #3 会话问
+    python rag.py 300 "问题"          # 指定块大小 300
+    python rag.py 300                # 只看切块/分词演示
+    python rag.py --sessions         # 列出历史会话
+"""
+
 import sys
 import jieba
 from rank_bm25 import BM25Okapi
@@ -10,8 +27,13 @@ import re
 import unicodedata
 import sqlite3
 from datetime import datetime
+import threading
 
 BASE = Path(__file__).resolve().parent
+
+# 单进程内所有 SQLite 操作共用一把可重入锁：
+# FastAPI 的同步路由跑在线程池里，多个请求会同时用到同一个连接。
+DB_LOCK = threading.RLock()
 
 ALLOWED_TOOLS = {"search_material", "generate_quiz"}
 
@@ -262,6 +284,10 @@ def do_generate_quiz(topic, count, chunks, bm25, client, trace):
     })
     return resp.choices[0].message.content, hits
 
+#兜底话术：引用校验不过 / 没检索就作答时返回，避免把没有出处的回答交给用户
+FALLBACK_CITATION = "抱歉，这次回答的引用没能通过校验，我先不回答这个问题，避免给出无法核对的来源。你可以换个问法再试。"
+FALLBACK_NO_SOURCE = "抱歉，这个问题我没有在资料里找到可引用的出处，不能凭记忆回答。请补充相关资料，或换个问法。"
+
 #主逻辑
 def agent(question, chunks, bm25, trace, max_steps=5,history=None):
     if history is None:
@@ -278,6 +304,7 @@ def agent(question, chunks, bm25, trace, max_steps=5,history=None):
     log = []
     seen = seed_seen(history, chunks)
     citation_retried = False
+    retrieved_this_turn = False   # 本轮是否真的调用过检索工具
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]+history+[{"role": "user", "content": question}]
     for step in range(max_steps):
         resp = None
@@ -308,7 +335,8 @@ def agent(question, chunks, bm25, trace, max_steps=5,history=None):
         })
         msg = resp.choices[0].message
         if not msg.tool_calls:
-            report, invalid = check_citations(msg.content, seen, len(chunks))
+            content = msg.content or ""
+            report, invalid = check_citations(content, seen, len(chunks))
             log.append(report)
             if invalid and not citation_retried:
                 citation_retried = True
@@ -323,8 +351,13 @@ def agent(question, chunks, bm25, trace, max_steps=5,history=None):
                 })
                 continue
             if invalid:
-                log.append(f"引用校验仍失败：{invalid}（已重试过一次）")
-            return msg.content, log
+                log.append(f"引用校验仍失败：{invalid}（已重试过一次），回答已拦截")
+                return FALLBACK_CITATION, log
+            if not extract_citations(content) and not retrieved_this_turn:
+                # 没检索、也没引用就作答：说明模型在凭训练记忆回答，不是资料问答
+                log.append("引用校验：本轮没有检索资料，回答也没有出处，已拦截")
+                return FALLBACK_NO_SOURCE, log
+            return content, log
         messages.append(msg.model_dump())
         for j,tc in enumerate(msg.tool_calls, start=1):
             if tc.function.name not in ALLOWED_TOOLS:
@@ -347,6 +380,7 @@ def agent(question, chunks, bm25, trace, max_steps=5,history=None):
                     else:
                         t0 = time.time()
                         result, hits = search(q, chunks, bm25)
+                        retrieved_this_turn = True
                         for i, sc in hits:
                             seen[i] = chunks[i]["source"]
                         trace.append({
@@ -495,61 +529,67 @@ CREATE INDEX IF NOT EXISTS idx_message_session ON message(session_id);
 
 #开始会话
 def start_session(conn, title):
-    try:
-        现在 = datetime.now().isoformat(timespec="seconds")
-        cur = conn.execute(
-            "INSERT INTO session (created_at, updated_at, title) VALUES (?, ?, ?)",
-            (现在, 现在, title),
-        )
-        conn.commit()
-        return cur.lastrowid
-    except Exception as e:
-        print(f"（会话没建成，这次不存对话：{e}）")
-        return None
+    with DB_LOCK:
+        try:
+            现在 = datetime.now().isoformat(timespec="seconds")
+            cur = conn.execute(
+                "INSERT INTO session (created_at, updated_at, title) VALUES (?, ?, ?)",
+                (现在, 现在, title),
+            )
+            conn.commit()
+            return cur.lastrowid
+        except Exception as e:
+            print(f"（会话没建成，这次不存对话：{e}）")
+            return None
 
 #删除空会话
 def drop_empty_session(conn, sid):
     if conn is None or sid is None:
         return
-    try:
-        n = conn.execute(
-            "SELECT COUNT(*) FROM message WHERE session_id = ?", (sid,)
-        ).fetchone()[0]
-        if n == 0:
-            conn.execute("DELETE FROM session WHERE id = ?", (sid,))
-            conn.commit()
-    except Exception:
-        pass
+    with DB_LOCK:
+        try:
+            n = conn.execute(
+                "SELECT COUNT(*) FROM message WHERE session_id = ?", (sid,)
+            ).fetchone()[0]
+            if n == 0:
+                conn.execute("DELETE FROM session WHERE id = ?", (sid,))
+                conn.commit()
+        except Exception:
+            pass
 
 #保存轮次
 def save_turn(conn, sid, question, answer):
-    try:
-        现在 = datetime.now().isoformat(timespec="seconds")
-        conn.execute(
-            "INSERT INTO message (session_id, role, content, created_at) VALUES (?, ?, ?, ?)",
-            (sid, "user", question, 现在),
-        )
-        conn.execute(
-            "INSERT INTO message (session_id, role, content, created_at) VALUES (?, ?, ?, ?)",
-            (sid, "assistant", answer, 现在),
-        )
-        conn.execute("UPDATE session SET updated_at = ? WHERE id = ?", (现在, sid))
-        conn.commit()
-    except Exception as e:
+    with DB_LOCK:
         try:
-            conn.rollback()
-        except Exception:
-            pass
-        print(f"（这轮对话没存上：{e}）")
+            现在 = datetime.now().isoformat(timespec="seconds")
+            conn.execute(
+                "INSERT INTO message (session_id, role, content, created_at) VALUES (?, ?, ?, ?)",
+                (sid, "user", question, 现在),
+            )
+            conn.execute(
+                "INSERT INTO message (session_id, role, content, created_at) VALUES (?, ?, ?, ?)",
+                (sid, "assistant", answer, 现在),
+            )
+            conn.execute("UPDATE session SET updated_at = ? WHERE id = ?", (现在, sid))
+            conn.commit()
+            return True
+        except Exception as e:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            print(f"（这轮对话没存上：{e}）")
+            return False
 
 #加载历史记录
 def load_history(conn, sid):
-    sql=("""
+    with DB_LOCK:
+        sql=("""
 SELECT role, content FROM message
 WHERE session_id = ? AND role IN ('user', 'assistant')
 ORDER BY id
     """)
-    rows = conn.execute(sql, (sid,)).fetchall()
+        rows = conn.execute(sql, (sid,)).fetchall()
     history=[]
     for role,content in rows:
         history.append({"role":role,"content":content})
@@ -560,20 +600,24 @@ def list_sessions(conn):
     if conn is None:
         print("（数据库打不开，看不了会话列表）")
         return
-    rows = conn.execute(
-        "SELECT id, updated_at, title FROM session ORDER BY updated_at DESC, id DESC"
-    ).fetchall()
-    if not rows:
-        print("还没有任何会话")
-        return
-    for sid, updated, title in rows:
-        n = conn.execute(
-            "SELECT COUNT(*) FROM message WHERE session_id = ?", (sid,)
-        ).fetchone()[0]
-        print(pad(f"#{sid}", 6)
-              + pad(str(updated or "").replace("T", " "), 20)
-              + pad(f"{n // 2} 轮", 8)
-              + cut(title or "", 24))
+    with DB_LOCK:
+        rows = conn.execute(
+            "SELECT id, updated_at, title FROM session ORDER BY updated_at DESC, id DESC"
+        ).fetchall()
+        if not rows:
+            print("还没有任何会话")
+            return
+        for sid, updated, title in rows:
+            n = conn.execute(
+                "SELECT COUNT(*) FROM message WHERE session_id = ?", (sid,)
+            ).fetchone()[0]
+            print(pad(f"#{sid}", 6)
+                  + pad(str(updated or "").replace("T", " "), 20)
+                  + pad(f"{n // 2} 轮", 8)
+                  + cut(title or "", 24))
+
+
+# ==================== 命令行入口（python rag.py） ====================
 
 #交互循环
 def interactive_loop(t, bm25, conn, sid, history):

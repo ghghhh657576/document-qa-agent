@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """网页层冒烟测试：不依赖真实模型 Key，使用临时 SQLite 库。
-运行（仓库根目录或 02 目录均可）：
+运行（在仓库根目录）：
     python tests/test_web.py
-可用 WEB_PROJECT 环境变量指定项目目录（默认 05-RAG-Agent项目）。
+可用 WEB_PROJECT 环境变量指定项目目录（默认仓库根目录，app.py 与 rag.py 同目录）。
 """
 import os
 import sys
@@ -11,7 +11,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-PROJECT = Path(os.environ.get("WEB_PROJECT", ROOT / "05-RAG-Agent项目")).resolve()
+PROJECT = Path(os.environ.get("WEB_PROJECT", ROOT)).resolve()
 sys.path.insert(0, str(PROJECT))
 os.environ["DEEPSEEK_API_KEY"] = ""
 TMP_BASE = Path(os.environ.get("WEB_TEST_TMP", tempfile.gettempdir())).resolve()

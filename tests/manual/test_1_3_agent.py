@@ -37,10 +37,10 @@ sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 HERE = Path(__file__).resolve().parent
 PROJECT = next(
-    (p for p in [HERE, *HERE.parents] if (p / "05-RAG-Agent项目").is_dir()),
+    (p for p in [HERE, *HERE.parents] if (p / "rag.py").is_file()),
     HERE.parent,
 )
-APP_DIR = PROJECT / "05-RAG-Agent项目"
+APP_DIR = PROJECT  # 单目录布局：Web 入口、引擎、模板都在仓库根目录
 APP = APP_DIR / "app.py"
 RAG = APP_DIR / "rag.py"
 STOP = APP_DIR / "停用词表.txt"
@@ -225,8 +225,8 @@ def test_0_guard():
     section(0, "保护：文件齐了、服务起来了")
 
     check("app.py 存在", APP.exists(), f"找不到 {APP}")
-    check("rag.py 存在（整个工具复制过来的那份）", RAG.exists(),
-          f"找不到 {RAG}\n准备那一节的第 3 条命令：Copy-Item \"..\\我的切块工具.py\" \".\\rag.py\"")
+    check("rag.py 存在（引擎 + 命令行入口，Web 共用）", RAG.exists(),
+          f"找不到 {RAG}\n应在仓库根目录：单引擎布局，不再复制副本")
     check("停用词表.txt 存在", STOP.exists(),
           f"找不到 {STOP}\n缺了不会报错，但检索会悄悄变差（任务卡坑 3）")
 

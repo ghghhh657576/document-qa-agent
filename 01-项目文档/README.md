@@ -28,10 +28,10 @@
 
 ---
 
-## 四层架构
+## 分层架构
 
 ```
-第 4 层  应用      网页界面 / 多轮对话 / 会话管理          ✅ 全功能完成（05-RAG-Agent项目/）
+第 4 层  应用      网页界面 / 多轮对话 / 会话管理          ✅ 全功能完成（app.py + templates/）
 第 3 层  Agent     工具调用循环、多步决策、失败自愈          ✅ agent()
 第 2 层  生成      检索结果 + prompt → 带引用的回答          ✅ agent() / do_generate_quiz()
 第 1 层  检索      BM25 中文检索 + 停用词过滤                ✅ tokenize() / build_index() / search()
@@ -101,24 +101,24 @@ while 步数 < 5:
 ## 快速开始
 
 ```powershell
-# 1. 装依赖（只有 3 个第三方库）
-python -m pip install jieba rank_bm25 openai
+# 1. 装依赖（只有 3 个第三方库，版本见 requirements.txt）
+python -m pip install -r requirements.txt
 
 # 2. 配 Key（Windows 用户级环境变量，需新开终端才生效）
 setx DEEPSEEK_API_KEY "sk-xxxxxxxx"
 
 # 3. 把 .txt / .md 课件放进 data/ 目录，然后提问
-python cli.py "装饰器怎么用"
+python rag.py "装饰器怎么用"
 ```
 
 命令行参数是"智能"的（`main()` 里按顺序判断）：
 
 | 命令 | 含义 |
 |---|---|
-| `python cli.py` | 读 `data/`，块大小 500，只演示分词和切块效果 |
-| `python cli.py "装饰器怎么用"` | 读 `data/`，提问 |
-| `python cli.py 300 "装饰器怎么用"` | 块大小改成 300 |
-| `python cli.py 某文件.txt "装饰器"` | 只查单个文件 |
+| `python rag.py` | 读 `data/`，块大小 500，只演示分词和切块效果 |
+| `python rag.py "装饰器怎么用"` | 读 `data/`，提问 |
+| `python rag.py 300 "装饰器怎么用"` | 块大小改成 300 |
+| `python rag.py 某文件.txt "装饰器"` | 只查单个文件 |
 
 ---
 
@@ -207,7 +207,7 @@ BM25 强在精确术语匹配（查"装饰器"能准确定位），向量强在�
 ## 已知限制
 
 - **会话持久化已实现**：SQLite 存 `会话.db`，`--sessions` 列表、`-c` 续最近、`-s N` 指定会话
-- **Web全链路已跑通**：`05-RAG-Agent项目` 的 `/ask` 返回JSON，`/` 和 `/ask-page` 是浏览器表单页，已支持多轮对话、历史会话列表、会话删除全功能，适配线程池跨线程调用；还没有公网部署
+- **Web全链路已跑通**：根目录 `app.py` 的 `/ask` 返回JSON，`/` 和 `/ask-page` 是浏览器表单页，已支持多轮对话、历史会话列表、会话删除全功能，适配线程池跨线程调用；还没有公网部署
 - **检索只有 BM25**：语义近义查询（"怎么复用代码"）召不回来
 - **引用校验不查内容**：只能保证出处真实（理由见决策 3）
 - **同名文件问题已修复**：`load_all` 改用 `str(f.relative_to(folder))`，不同目录的同名文件能区分
@@ -224,20 +224,21 @@ BM25 强在精确术语匹配（查"装饰器"能准确定位），向量强在�
 | 模型 | `deepseek-chat` |
 | 其余 | 全部标准库（`sys` / `os` / `json` / `time` / `re` / `pathlib` / `unicodedata` / `sqlite3`） |
 
-**759 行，单文件，3 个第三方依赖（+ 标准库 sqlite3）。**
+**803 行单文件（引擎 + 命令行入口），3 个第三方依赖（+ 标准库 sqlite3）。**
 
 ---
 
 ## 文件说明
 
 ```
-cli.py      主程序（759 行）
+rag.py               引擎 + 命令行入口（检索 / Agent / DB / CLI）
+app.py               Web 入口（FastAPI 路由）
+templates/           网页模板（index.html）
 停用词表.txt         239 个停用词（71 符号 + 72 单字虚词 + 96 多字虚词）
 术语表.txt           35 个术语（可选，实测零收益，默认不启用）
 data/                知识库
   AI-Agent实习学习路线_clean.txt
   刷题清单_clean.txt
   知识点细化手册_clean.txt
-05-RAG-Agent项目/    部署阶段工作区（FastAPI全功能：多轮+历史会话+删除）
 踩坑记录.md          开发过程中的真实错误与定位过程
 ```

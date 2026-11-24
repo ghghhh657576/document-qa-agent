@@ -8,7 +8,7 @@
 
 - **手写 Function Calling 循环**：不依赖 LangChain，模型自主决定何时检索、检索什么、要不要出题，支持多工具调用与最多 5 步推理
 - **BM25 中文检索**：jieba 分词 + 239 词停用词表 + 标点感知切分，精确匹配技术术语
-- **两级引用校验**：校验引用块号「是否存在」+「本次是否真实检索过」，失败时回灌真实块号让模型自我修正，实测 5 个查询 0 违规
+- **两级引用校验 + 兜底**：校验引用块号「是否存在」+「本次是否真实检索过」，失败时回灌真实块号让模型自我修正；未检索也未给引用、或重试后仍引用不存在的块时，直接返回兜底话术，不把无法核对的内容放给用户（实测 5 个查询 0 违规）
 - **多轮对话持久化**：SQLite 存储会话，网页端支持续聊、历史会话管理、删除
 - **可观测性**：逐步记录 token、耗时、缓存命中率、预估成本，命令行和网页端都能看到执行轨迹
 - **Web 全功能**：FastAPI + 传统表单（零前端框架），网页问答 + JSON 接口 + 多轮对话
@@ -64,23 +64,24 @@ export DEEPSEEK_API_KEY="sk-xxxxxxxx"
 
 ```bash
 # 把 .txt 资料放进 data/ 目录，然后提问
-python cli.py "装饰器怎么用"
+python rag.py "装饰器怎么用"
 
 # 指定块大小
-python cli.py 300 "装饰器怎么用"
+python rag.py 300 "装饰器怎么用"
 
 # 只查单个文件
-python cli.py 某文件.txt "装饰器"
+python rag.py 某文件.txt "装饰器"
 ```
 
 ### 启动 Web 服务
 
 ```bash
-cd 05-RAG-Agent项目
-python -m uvicorn app:app --reload
+# 在仓库根目录运行（app.py 与 templates/ 都在根目录）
+python app.py                         # 直接启动，默认 http://127.0.0.1:8000
+python -m uvicorn app:app --reload    # 或热重载开发模式
 ```
 
-浏览器打开 `http://127.0.0.1:8000`，支持多轮对话、历史会话、执行详情。
+浏览器打开 `http://127.0.0.1:8000`，支持多轮对话、历史会话、执行详情；Web 细节见 `docs/Web使用说明.md`。
 
 ## 核心设计决策（都是实测出来的，不是拍脑袋）
 
@@ -95,16 +96,15 @@ python -m uvicorn app:app --reload
 ## 目录结构
 
 ```
-cli.py           命令行版主程序（759 行）
+rag.py                    引擎 + 命令行入口（检索 / Agent / DB / CLI）
+app.py                    Web 入口（FastAPI 路由）
+templates/index.html      网页模板
 data/                     知识库目录
 停用词表.txt              239 个停用词
 术语表.txt                35 个术语（可选，实测零收益）
-05-RAG-Agent项目/         Web 版（FastAPI）
-  app.py                  服务入口 + 路由
-  rag.py                  检索 / Agent 层
-  templates/index.html    网页模板
-  requirements.txt        运行依赖
-docs/                     项目文档与截图
+requirements.txt          运行依赖
+tests/                    冒烟测试（不需要 API Key）
+docs/                     项目文档、截图与 Web 使用说明
 ```
 
 ## 技术栈
@@ -122,3 +122,4 @@ docs/                     项目文档与截图
 - 检索只有 BM25，语义近义查询召回不足 → 规划混合检索
 - 仅本机运行，未做公网部署、鉴权、限流 → 规划生产级升级
 - 引用校验保证出处真实，不保证内容与原文逐字一致
+- 并发写库用进程内 `threading.RLock` 串行化，只适合单进程部署 → 多实例需换数据库事务/连接池

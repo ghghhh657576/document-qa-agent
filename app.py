@@ -1,4 +1,7 @@
+# -*- coding: utf-8 -*-
+"""Web 入口：FastAPI 应用 + 页面/JSON 路由（引擎复用同目录 rag.py）。"""
 from pathlib import Path
+import sys
 import time
 from fastapi import FastAPI,HTTPException
 from pydantic import BaseModel,Field
@@ -10,6 +13,9 @@ BASE_DIR = Path(__file__).resolve().parent
 
 app = FastAPI()
 
+# 检索/Agent 引擎就在本目录的 rag.py（命令行与 Web 共用同一份，不复制）
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
 import rag
 
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
@@ -20,9 +26,10 @@ CONN = rag.init_db()
 def get_page_sessions():
     if CONN is None:
         return []
-    rows = CONN.execute(
-        "SELECT id, title, updated_at FROM session ORDER BY updated_at DESC, id DESC"
-    ).fetchall()
+    with rag.DB_LOCK:
+        rows = CONN.execute(
+            "SELECT id, title, updated_at FROM session ORDER BY updated_at DESC, id DESC"
+        ).fetchall()
     return [{"id": r[0], "title": r[1], "updated_at": r[2]} for r in rows]
 
 def trace_summary(trace, total_elapsed):
@@ -72,24 +79,26 @@ def index(request: Request):
 def delete_session(sid: str = Form("")):
     # 数据库异常/参数非法直接跳回首页，不抛错误页
     try:
-        if CONN is not None and sid.strip().isdigit():
-            del_sid = int(sid.strip())
-            exists = CONN.execute(
-                "SELECT 1 FROM session WHERE id = ?", (del_sid,)
-            ).fetchone()
-            if exists:
-                # 先删消息，再删会话，避免外键约束和孤儿数据
-                CONN.execute(
-                    "DELETE FROM message WHERE session_id = ?", (del_sid,)
-                )
-                CONN.execute(
-                    "DELETE FROM session WHERE id = ?", (del_sid,)
-                )
-                CONN.commit()
+        with rag.DB_LOCK:
+            if CONN is not None and sid.strip().isdigit():
+                del_sid = int(sid.strip())
+                exists = CONN.execute(
+                    "SELECT 1 FROM session WHERE id = ?", (del_sid,)
+                ).fetchone()
+                if exists:
+                    # 先删消息，再删会话，避免外键约束和孤儿数据
+                    CONN.execute(
+                        "DELETE FROM message WHERE session_id = ?", (del_sid,)
+                    )
+                    CONN.execute(
+                        "DELETE FROM session WHERE id = ?", (del_sid,)
+                    )
+                    CONN.commit()
     except Exception as e:
         try:
-            if CONN is not None:
-                CONN.rollback()
+            with rag.DB_LOCK:
+                if CONN is not None:
+                    CONN.rollback()
         except Exception:
             pass
         print(f"删除会话失败：{e}")
@@ -101,8 +110,9 @@ def open_chat(request: Request, sid: int):
     # 数据库不可用时不要抛 500：直接回首页
     if CONN is None:
         return RedirectResponse(url="/", status_code=302)
-    # 校验会话是否真实存在
-    exists = CONN.execute("SELECT 1 FROM session WHERE id = ?", (sid,)).fetchone()
+    # 校验会话是否真实存在（和写操作共用一把锁）
+    with rag.DB_LOCK:
+        exists = CONN.execute("SELECT 1 FROM session WHERE id = ?", (sid,)).fetchone()
     if not exists:
         # 非法/已删除会话直接回到首页
         return RedirectResponse(url="/", status_code=302)
@@ -122,7 +132,8 @@ def ask_page(request: Request, question: str = Form(""), sid: str = Form("")):
     current_sid = None
     if sid.strip().isdigit() and CONN is not None:
         tmp_sid = int(sid.strip())
-        exists = CONN.execute("SELECT 1 FROM session WHERE id = ?", (tmp_sid,)).fetchone()
+        with rag.DB_LOCK:
+            exists = CONN.execute("SELECT 1 FROM session WHERE id = ?", (tmp_sid,)).fetchone()
         if exists:
             current_sid = tmp_sid
     # 加载当前会话的全部历史
@@ -205,6 +216,8 @@ def ask_page(request: Request, question: str = Form(""), sid: str = Form("")):
         else:
             history.append({"role": "user", "content": q})
             history.append({"role": "assistant", "content": answer})
+            if log is not None:
+                log.append("（提醒：本轮对话没有存进数据库，刷新页面后会丢失）")
             if created_new:
                 rag.drop_empty_session(CONN, current_sid)
     else:
@@ -230,3 +243,9 @@ def ask(t:Test):
     if answer is None:
         raise HTTPException(503, "模型暂时不可用")
     return {"answer": answer}
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="127.0.0.1", port=8000, reload=False)

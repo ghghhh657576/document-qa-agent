@@ -36,10 +36,10 @@ sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 HERE = Path(__file__).resolve().parent
 PROJECT = next(
-    (p for p in [HERE, *HERE.parents] if (p / "05-RAG-Agent项目").is_dir()),
+    (p for p in [HERE, *HERE.parents] if (p / "rag.py").is_file()),
     HERE.parent,
 )
-TOOL = PROJECT / "cli.py"
+TOOL = PROJECT / "rag.py"
 if not TOOL.exists():
     TOOL = PROJECT / "我的切块工具.py"
 REAL_DB = PROJECT / "会话.db"

@@ -1,41 +1,40 @@
-# 课程资料理解助手 —— 服务层工作区
+# 课程资料理解助手 —— Web 使用说明
 
 把课件/教材喂进去，用自然语言提问，Agent 自己决定搜什么、搜几次，
 基于资料回答并标注来源；资料里没有就拒答。
 
-> 本目录只承载**部署阶段（任务 1：FastAPI + 网页）**的代码。
-> 命令行版原型在同仓库根目录的 `cli.py`，
-> 检索层 / Agent 层的实现从这里迁移过来。
+> Web 入口 `app.py`、模板 `templates/` 都在仓库根目录；检索 / Agent 层是同目录的 `rag.py`
+> （命令行与网页共用同一份，仓库里不再复制第二份）。命令行入口也是 `rag.py`（`python rag.py`）。
 
-## 四层结构
+## 分层结构
 
 ```
 第 4 层  应用     网页界面、多轮对话、会话管理     ✅ 全功能已完成：多轮+历史列表+删除
 第 3 层  Agent    工具调用、多步推理、重试容错    ✅ 已完成（桌面原型）
 第 2 层  生成     检索结果 + prompt → 带引用回答  ✅ 已完成（桌面原型）
 第 1 层  检索     BM25 中文检索                   ✅ 已完成（桌面原型）
+第 0 层  数据     多文件读取、标点感知切分        ✅ 已完成（桌面原型）
 ```
 
 ## 目录约定
 
 ```
-app.py             服务入口：FastAPI 实例 + 路由
-rag.py             检索 / Agent 层（从桌面主程序同步：BASE 路径、BM25、引用校验、跨线程适配）
-data/              知识库目录，放所有 .txt，服务启动时整体读取合并
+app.py             服务入口：FastAPI 实例 + 路由（根目录）
 templates/         网页模板（index.html：聊天布局+历史会话+删除表单，带完整分块注释）
-requirements.txt   运行依赖
-停用词表.txt       分词停用词（已从桌面项目复制）
 会话.db            SQLite数据库，存储网页端多轮会话，服务启动时自动初始化
 ```
+
+检索 / Agent 层 `rag.py`、知识库 `data/`、`停用词表.txt`、`requirements.txt` 都在仓库根目录，命令行与网页共用同一份；`app.py` 与 `rag.py` 同目录，直接 `import rag`。
 
 ## 运行
 
 ```powershell
-# 首次：确认依赖
+# 首次：在仓库根目录确认依赖（requirements.txt 在根目录）
 python -m pip install -r requirements.txt
 
 # 启动服务（必须新开终端，否则读不到 DEEPSEEK_API_KEY）
-python -m uvicorn app:app --reload
+python app.py                    # 直接启动，默认 127.0.0.1:8000
+python -m uvicorn app:app --reload   # 或热重载开发模式
 
 # 验收：浏览器打开
 http://127.0.0.1:8000
@@ -64,6 +63,7 @@ python tests/test_web.py
 - 用**传统表单提交**，不引入 JavaScript 框架
 - `data/` 全部 `.txt` 在**服务启动时**读取、合并、建一次 BM25 索引
 - **不要在每次请求里重建索引**（`agent()` 已改为接收外部传入的 `bm25`）
-- SQLite连接添加`check_same_thread=False`，适配FastAPI线程池跨线程调用
+- SQLite 连接由 `rag.DB_LOCK`（进程内 RLock）串行化；`check_same_thread=False` 只允许跨线程使用连接，本身不保证线程安全
 - 删除会话必须用POST请求，先删消息再删会话，避免残留孤儿数据
 - 模型输出、请求参数都当作不可信输入校验；校验失败回灌错误文本而非抛异常
+- 未检索也未给出引用、或重试后仍引用不存在块号的回答，一律返回兜底话术，不放给用户
