@@ -1,5 +1,7 @@
 # 文档知识库问答 Agent（RAG + Function Calling）
 
+[![CI](https://github.com/ghghhh657576/document-qa-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/ghghhh657576/document-qa-agent/actions/workflows/ci.yml)
+
 一个**本地文档问答 Agent**：把技术笔记/文档放进 `data/`，用自然语言提问，Agent 基于资料回答并标注出处，资料里没有就拒答。
 
 不是「调一次模型接口」，而是**手写的 Function Calling 循环**——模型只负责决策，检索、执行、校验、纠错都在代码里完成。
@@ -72,6 +74,14 @@ setx DEEPSEEK_API_KEY "sk-xxxxxxxx"
 export DEEPSEEK_API_KEY="sk-xxxxxxxx"
 ```
 
+也可以改用仓库自带的 `.env`（适合本地开发）：把 `.env.example` 复制为 `.env` 并填入 Key，启动时会自动读取；已经存在的系统环境变量优先，不会被 `.env` 覆盖。
+
+```bash
+copy .env.example .env    # Windows
+cp .env.example .env      # Linux / macOS
+# 然后编辑 .env，填入：DEEPSEEK_API_KEY=sk-xxxxxxxx
+```
+
 ### 命令行提问
 
 ```bash
@@ -83,6 +93,15 @@ python rag.py 300 "装饰器怎么用"
 
 # 只查单个文件
 python rag.py 某文件.txt "装饰器"
+```
+
+多轮对话与历史会话：
+
+```bash
+python rag.py                      # 交互模式，连续提问
+python rag.py -c "那双指针呢"       # 接着最近一次会话追问
+python rag.py -s 3 "继续问"        # 接着 #3 会话追问
+python rag.py --sessions           # 列出历史会话
 ```
 
 ### 启动 Web 服务
@@ -136,6 +155,8 @@ eval/                     离线评估脚本（切块 / 检索 / 引用校验，
 requirements.txt          运行依赖
 tests/                    冒烟测试（不需要 API Key）
 docs/                     项目详解与踩坑记录
+.env.example              环境变量示例（复制为 .env 使用）
+.github/workflows/ci.yml  GitHub Actions：推送/PR 时自动跑冒烟测试
 ```
 
 ## 技术栈
