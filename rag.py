@@ -122,7 +122,7 @@ TOOLS = [{
 SYSTEM_PROMPT = (
     "你是文档知识库问答助手。只能依据 search_material 检索到的资料内容回答，"
     "回答时标注引用的块编号和它来自的资料文件名，格式如「（块 #12，算法与数据结构笔记_clean.txt）」；"
-    "资料中没有依据时直接说“资料中没有找到”，禁止编造。"
+    "资料中没有依据时直接说“资料中没有找到”，禁止编造。用户要求练习题/出题时，调用 generate_quiz 工具（知识点可以从对话历史里取），出题结果本身不需要块引用。"
     "无论资料里有多少英文术语，始终用简体中文回答。"
 )
 
@@ -341,6 +341,7 @@ def agent(question, chunks, bm25, trace, max_steps=5,history=None):
     seen = seed_seen(history, chunks)
     citation_retried = False
     retrieved_this_turn = False   # 本轮是否真的调用过检索工具
+    quiz_this_turn = False        # 本轮是否真的生成过练习题（出题结果不需要块引用）
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]+history+[{"role": "user", "content": question}]
     for step in range(max_steps):
         resp = None
@@ -389,8 +390,8 @@ def agent(question, chunks, bm25, trace, max_steps=5,history=None):
             if invalid:
                 log.append(f"引用校验仍失败：{invalid}（已重试过一次），回答已拦截")
                 return FALLBACK_CITATION, log
-            if not extract_citations(content) and not retrieved_this_turn:
-                # 没检索、也没引用就作答：说明模型在凭训练记忆回答，不是资料问答
+            if not extract_citations(content) and not retrieved_this_turn and not quiz_this_turn:
+                # 没检索、没出题、也没引用就作答：说明模型在凭训练记忆回答，不是资料问答
                 log.append("引用校验：本轮没有检索资料，回答也没有出处，已拦截")
                 return FALLBACK_NO_SOURCE, log
             return content, log
@@ -444,6 +445,8 @@ def agent(question, chunks, bm25, trace, max_steps=5,history=None):
                         result, hits = do_generate_quiz(topic, count, chunks, bm25, client, trace)
                         for i, sc in hits:
                             seen[i] = chunks[i]["source"]
+                        if hits and not str(result).startswith(("出题失败", "资料中没有关于")):
+                            quiz_this_turn = True
                         for rec in trace:
                             if rec["step"] is None:
                                 rec["step"] = step + 1

@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 """引用校验兜底的行为验证（不需要 API Key，用假的模型客户端）。
 
-验证 README 里承诺的三件事：
+验证 README 里承诺的四件事：
 1. 本轮没检索资料、回答里也没有块引用 → 拦截，返回兜底话术
 2. 引用不存在的块号 → 回灌真实块号重试一次；重试后仍编造 → 拦截，不把不可核对的内容返回
 3. 正常检索 + 引用真实块号 → 正常放行
+4. 纯出题请求（调用 generate_quiz）的回答没有块引用 → 放行，不误拦
 
 用法：python eval/citation_gate.py   （退出码 0 表示全部通过）
 """
@@ -105,6 +106,19 @@ def main():
     ])
     answer, _logs = rag.agent("装饰器是什么？", chunks, bm25, [])
     ok &= check("正常回答不被误拦", answer == good, answer[:24])
+
+    log()
+    log("=== 4. 纯出题请求（出题结果没有块引用）===")
+    quiz_text = ("1. 装饰器的作用是什么？\n答案：在不改原函数的前提下增加功能。\n"
+                 "解析：装饰器是接收函数并返回函数的高阶函数。")
+    run_with([
+        lambda _m: _msg(tool_calls=[_tool_call("generate_quiz", '{"topic": "装饰器", "count": 1}')]),
+        lambda _m: _msg(content=quiz_text),
+        lambda _m: _msg(content=quiz_text),
+    ])
+    answer, log_lines = rag.agent("出几道题", chunks, bm25, [])
+    ok &= check("出题结果不被误拦", answer == quiz_text, answer[:24])
+    ok &= check("日志记录了出题步骤", any("出题「装饰器」" in x for x in log_lines))
 
     log()
     fails = sum(1 for line in OUT if line.startswith("FAIL"))
